@@ -1,0 +1,81 @@
+import SwiftUI
+import CoreData
+import CoreLocation
+import CoreMotion
+
+struct ContentView: View {
+    @Environment(\.managedObjectContext) private var viewContext
+
+    @FetchRequest(
+        entity: LogEntry.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \LogEntry.timestamp, ascending: false)]
+    ) var entries: FetchedResults<LogEntry>
+
+    private let locationManager = CLLocationManager()
+    private let motionManager = CMMotionManager()
+
+    @State private var latitude: Double = 0.0
+    @State private var longitude: Double = 0.0
+    @State private var altitude: Double = 0.0
+    @State private var accelerometer: Double = 0.0
+
+    var body: some View {
+        NavigationStack {
+            List(entries) { entry in
+                NavigationLink {
+                    DetailView(entry: entry)
+                } label: {
+                    VStack(alignment: .leading) {
+                        Text(entry.name ?? "Unnamed")
+                            .font(.headline)
+                        Text(entry.timestamp ?? Date(), style: .date)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("GeoLog")
+            .toolbar {
+                Button("Log Location") {
+                    logLocation()
+                }
+            }
+            .onAppear {
+                startSensors()
+            }
+        }
+    }
+
+    func startSensors() {
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
+
+        if motionManager.isAccelerometerAvailable {
+            motionManager.accelerometerUpdateInterval = 0.1
+            motionManager.startAccelerometerUpdates(to: .main) { data, _ in
+                guard let data = data else { return }
+                let x = data.acceleration.x
+                let y = data.acceleration.y
+                let z = data.acceleration.z
+                accelerometer = sqrt(x*x + y*y + z*z)
+            }
+        }
+    }
+
+    func logLocation() {
+        if let location = locationManager.location {
+            latitude = location.coordinate.latitude
+            longitude = location.coordinate.longitude
+            altitude = location.altitude
+        }
+
+        let entry = LogEntry(context: viewContext)
+        entry.name = "Entry \(entries.count + 1)"
+        entry.timestamp = Date()
+        entry.latitude = latitude
+        entry.longitude = longitude
+        entry.altitude = altitude
+        entry.accelerometer = accelerometer
+        try? viewContext.save()
+    }
+}
